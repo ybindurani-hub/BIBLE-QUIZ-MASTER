@@ -1,0 +1,5 @@
+{
+  "name": "BibleMaster Quiz PWA",
+  "description": "A professional, offline-capable Bible Quiz application with 66 books, 3 difficulty levels, and progress tracking.",
+  "requestFramePermissions": []
+}

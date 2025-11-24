@@ -1,0 +1,125 @@
+import { Question, UserProgress, Difficulty } from '../types';
+import { STATIC_BIBLE_DATA } from '../data/questions';
+
+const DB_NAME = 'BibleQuizDB';
+const DB_VERSION = 1;
+const STORE_QUESTIONS = 'questions';
+const STORE_PROGRESS = 'progress';
+
+export const initDB = (): Promise<IDBDatabase> => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onerror = (event) => reject('IndexedDB error');
+
+    request.onsuccess = (event) => {
+      resolve((event.target as IDBOpenDBRequest).result);
+    };
+
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      
+      // Store questions: Key path 'id', index by 'book'
+      if (!db.objectStoreNames.contains(STORE_QUESTIONS)) {
+        const qStore = db.createObjectStore(STORE_QUESTIONS, { keyPath: 'id' });
+        qStore.createIndex('book', 'book', { unique: false });
+      }
+
+      // Store progress: Key path combination of book+difficulty
+      if (!db.objectStoreNames.contains(STORE_PROGRESS)) {
+        const pStore = db.createObjectStore(STORE_PROGRESS, { keyPath: ['bookName', 'difficulty'] });
+      }
+    };
+  });
+};
+
+export const saveQuestions = async (questions: Question[]): Promise<void> => {
+  const db = await initDB();
+  const tx = db.transaction(STORE_QUESTIONS, 'readwrite');
+  const store = tx.objectStore(STORE_QUESTIONS);
+  
+  questions.forEach(q => store.put(q));
+  
+  return new Promise((resolve) => {
+    tx.oncomplete = () => resolve();
+  });
+};
+
+export const getQuestionsByBook = async (bookName: string): Promise<Question[]> => {
+  const db = await initDB();
+  const tx = db.transaction(STORE_QUESTIONS, 'readonly');
+  const store = tx.objectStore(STORE_QUESTIONS);
+  const index = store.index('book');
+  
+  return new Promise((resolve) => {
+    const request = index.getAll(bookName);
+    request.onsuccess = () => {
+      resolve(request.result || []);
+    };
+  });
+};
+
+export const saveProgress = async (progress: UserProgress): Promise<void> => {
+  const db = await initDB();
+  const tx = db.transaction(STORE_PROGRESS, 'readwrite');
+  const store = tx.objectStore(STORE_PROGRESS);
+  store.put(progress);
+  return new Promise((resolve) => {
+    tx.oncomplete = () => resolve();
+  });
+};
+
+export const getProgress = async (bookName: string): Promise<UserProgress[]> => {
+  const db = await initDB();
+  const tx = db.transaction(STORE_PROGRESS, 'readonly');
+  const store = tx.objectStore(STORE_PROGRESS);
+  
+  return new Promise((resolve) => {
+    const items: UserProgress[] = [];
+    const request = store.openCursor();
+    request.onsuccess = (e) => {
+      const cursor = (e.target as IDBRequest).result;
+      if (cursor) {
+        if (cursor.value.bookName === bookName) {
+          items.push(cursor.value);
+        }
+        cursor.continue();
+      } else {
+        resolve(items);
+      }
+    };
+  });
+};
+
+// Seed initial data from static JSON
+export const seedInitialData = async () => {
+  // Check if we already have data for Genesis (assuming if Genesis is there, we seeded)
+  const genesisQs = await getQuestionsByBook('Genesis');
+  
+  if (genesisQs.length === 0) {
+    console.log("Seeding Database from Static JSON...");
+    
+    const allQuestions: Question[] = [];
+
+    STATIC_BIBLE_DATA.forEach((bookData) => {
+      bookData.questions.forEach((q, index) => {
+        allQuestions.push({
+          id: `${bookData.book.toLowerCase()}-${index}`,
+          book: bookData.book,
+          question: q.question,
+          options: q.options,
+          correct: q.correct,
+          reference: q.reference,
+          difficulty: q.difficulty as Difficulty
+        });
+      });
+    });
+
+    if (allQuestions.length > 0) {
+      await saveQuestions(allQuestions);
+      console.log(`Seeded ${allQuestions.length} questions successfully.`);
+    }
+  } else {
+    console.log("Database already seeded.");
+  }
+};
