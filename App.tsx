@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import Layout from './components/Layout';
