@@ -3,8 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import Layout from './components/Layout';
 import { BOOKS_OF_BIBLE, Question, Difficulty, QuizState } from './types';
-import { seedInitialData, getQuestionsByBook, getProgress, saveProgress } from './services/db';
-import { ChevronRight, Star, ArrowLeft, Info, Check, X, Clock } from 'lucide-react';
+import { seedInitialData, getQuestionsByBook, getProgress, saveProgress, syncDataToCloud } from './services/db';
+import { ChevronRight, Star, ArrowLeft, Info, Check, X, Clock, Wifi, WifiOff, CloudUpload } from 'lucide-react';
 import AdBanner from './components/AdBanner';
 import Interstitial from './components/Interstitial';
 
@@ -12,6 +12,33 @@ import Interstitial from './components/Interstitial';
 const ThemeContext = React.createContext({ isDark: false, toggleTheme: () => {} });
 
 // --- Components ---
+
+// Toast Component for Sync Status
+const SyncToast: React.FC<{ status: 'online' | 'offline' | 'syncing' | null }> = ({ status }) => {
+    if (!status) return null;
+
+    let bg = "bg-slate-800";
+    let text = "text-white";
+    let icon = <CloudUpload className="w-4 h-4 animate-bounce" />;
+    let message = "Syncing progress...";
+
+    if (status === 'online') {
+        bg = "bg-green-600";
+        icon = <Wifi className="w-4 h-4" />;
+        message = "Back Online - Synced";
+    } else if (status === 'offline') {
+        bg = "bg-gray-500";
+        icon = <WifiOff className="w-4 h-4" />;
+        message = "Offline Mode - Progress Saved Locally";
+    }
+
+    return (
+        <div className={`fixed bottom-20 left-1/2 transform -translate-x-1/2 z-[60] px-4 py-2 rounded-full shadow-lg flex items-center gap-2 text-xs font-bold ${bg} ${text} transition-all duration-500 animate-in slide-in-from-bottom-5 fade-in`}>
+            {icon}
+            <span>{message}</span>
+        </div>
+    );
+};
 
 // 1. Home View: Book List
 const HomeView: React.FC = () => {
@@ -246,6 +273,9 @@ const QuizGame: React.FC = () => {
             stars,
             lastPlayed: Date.now()
         });
+        
+        // Trigger a background sync after saving
+        syncDataToCloud();
     };
 
     const getKnowledgeLevel = (score: number, total: number) => {
@@ -490,6 +520,8 @@ const App: React.FC = () => {
       return false;
   });
 
+  const [syncStatus, setSyncStatus] = useState<'online' | 'offline' | 'syncing' | null>(null);
+
   useEffect(() => {
     if (isDark) {
       document.documentElement.classList.add('dark');
@@ -503,6 +535,41 @@ const App: React.FC = () => {
   useEffect(() => {
       // Initialize DB and Seed Data on Mount
       seedInitialData();
+
+      // Network Listeners
+      const handleOnline = () => {
+          setSyncStatus('online');
+          setTimeout(() => {
+              setSyncStatus('syncing');
+              syncDataToCloud().then(() => {
+                 setTimeout(() => setSyncStatus(null), 2000);
+              });
+          }, 1500);
+      };
+
+      const handleOffline = () => {
+          setSyncStatus('offline');
+          setTimeout(() => setSyncStatus(null), 3000);
+      };
+
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+
+      // Periodic check every 2 minutes
+      const interval = setInterval(() => {
+          if (navigator.onLine) {
+              setSyncStatus('syncing');
+              syncDataToCloud().then(() => {
+                 setTimeout(() => setSyncStatus(null), 2000);
+              });
+          }
+      }, 120000);
+
+      return () => {
+          window.removeEventListener('online', handleOnline);
+          window.removeEventListener('offline', handleOffline);
+          clearInterval(interval);
+      };
   }, []);
 
   return (
@@ -513,6 +580,7 @@ const App: React.FC = () => {
                     <Route path="/" element={<HomeView />} />
                     <Route path="/quiz/:bookName" element={<QuizGame />} />
                 </Routes>
+                <SyncToast status={syncStatus} />
             </Layout>
         </HashRouter>
     </ThemeContext.Provider>

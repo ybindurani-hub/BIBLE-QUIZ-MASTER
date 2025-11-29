@@ -2,7 +2,7 @@ import { Question, UserProgress, Difficulty } from '../types';
 import { STATIC_BIBLE_DATA } from '../data/questions';
 
 const DB_NAME = 'BibleQuizDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_QUESTIONS = 'questions';
 const STORE_PROGRESS = 'progress';
 
@@ -91,51 +91,88 @@ export const getProgress = async (bookName: string): Promise<UserProgress[]> => 
   });
 };
 
+// Placeholder for Future Backend Sync
+export const syncDataToCloud = async (): Promise<boolean> => {
+    if (!navigator.onLine) return false;
+    
+    console.log("☁️ Initiating Background Sync...");
+    
+    try {
+        const db = await initDB();
+        
+        // 1. Fetch data immediately (Transaction must be used synchronously or it closes)
+        const allProgress: UserProgress[] = await new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE_PROGRESS, 'readonly');
+            const store = tx.objectStore(STORE_PROGRESS);
+            const request = store.getAll();
+            
+            request.onsuccess = () => resolve(request.result || []);
+            request.onerror = () => reject("Failed to read progress from DB");
+        });
+
+        // 2. Simulate network latency/API Call (Transaction is already closed here, which is fine)
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        // Here you would POST `allProgress` to your API
+        console.log(`✅ Sync Complete: ${allProgress.length} records synced to cloud (Simulated).`);
+        return true;
+
+    } catch (error) {
+        console.error("Sync Failed:", error);
+        return false;
+    }
+};
+
 // Seed initial data from static JSON
 export const seedInitialData = async () => {
   try {
-    // Check if we already have data for Genesis (assuming if Genesis is there, we seeded)
-    const genesisQs = await getQuestionsByBook('Genesis');
+    const db = await initDB();
+    // Check count. If 0, we seed.
+    const tx = db.transaction(STORE_QUESTIONS, 'readonly');
+    const store = tx.objectStore(STORE_QUESTIONS);
+    const countRequest = store.count();
     
-    if (genesisQs.length === 0) {
-      console.log("Seeding Database from Static JSON...");
+    countRequest.onsuccess = async () => {
+        if (countRequest.result === 0) {
+            console.log("Seeding Database from Static JSON...");
       
-      // CRITICAL FIX: Robust check for data existence
-      if (!STATIC_BIBLE_DATA || !Array.isArray(STATIC_BIBLE_DATA)) {
-        console.error("Static data is missing, undefined, or not an array. Skipping seed.");
-        return;
-      }
-
-      const allQuestions: Question[] = [];
-
-      STATIC_BIBLE_DATA.forEach((bookData) => {
-        // Safe check for each book entry
-        if (bookData && bookData.book && Array.isArray(bookData.questions)) {
-          bookData.questions.forEach((q, index) => {
-            if (q && q.question && q.options && q.correct) {
-               allQuestions.push({
-                id: `${bookData.book.toLowerCase()}-${index}`,
-                book: bookData.book,
-                question: q.question,
-                options: q.options,
-                correct: q.correct,
-                reference: q.reference || "",
-                difficulty: (q.difficulty as Difficulty) || "Moderate"
-              });
+            // CRITICAL FIX: Robust check for data existence
+            if (!STATIC_BIBLE_DATA || !Array.isArray(STATIC_BIBLE_DATA)) {
+                console.error("Static data is missing or invalid.");
+                return;
             }
-          });
-        }
-      });
 
-      if (allQuestions.length > 0) {
-        await saveQuestions(allQuestions);
-        console.log(`Seeded ${allQuestions.length} questions successfully.`);
-      } else {
-        console.warn("No valid questions found to seed.");
-      }
-    } else {
-      console.log("Database already seeded.");
-    }
+            const allQuestions: Question[] = [];
+
+            STATIC_BIBLE_DATA.forEach((bookData) => {
+                // Safe check for each book entry
+                if (bookData && bookData.book && Array.isArray(bookData.questions)) {
+                bookData.questions.forEach((q, index) => {
+                    if (q && q.question && q.options && q.correct) {
+                    allQuestions.push({
+                        id: `${bookData.book.toLowerCase()}-${index}`,
+                        book: bookData.book,
+                        question: q.question,
+                        options: q.options,
+                        correct: q.correct,
+                        reference: q.reference || "",
+                        difficulty: (q.difficulty as Difficulty) || "Moderate"
+                    });
+                    }
+                });
+                }
+            });
+
+            if (allQuestions.length > 0) {
+                await saveQuestions(allQuestions);
+                console.log(`Seeded ${allQuestions.length} questions successfully.`);
+            } else {
+                console.warn("No valid questions found to seed.");
+            }
+        } else {
+            console.log("Database already seeded.");
+        }
+    };
   } catch (error) {
     console.error("Error during data seeding:", error);
   }
