@@ -99,20 +99,27 @@ export const seedInitialData = async () => {
   if (genesisQs.length === 0) {
     console.log("Seeding Database from Static JSON...");
     
+    if (!STATIC_BIBLE_DATA || !Array.isArray(STATIC_BIBLE_DATA)) {
+      console.error("Static data is missing or invalid");
+      return;
+    }
+
     const allQuestions: Question[] = [];
 
     STATIC_BIBLE_DATA.forEach((bookData) => {
-      bookData.questions.forEach((q, index) => {
-        allQuestions.push({
-          id: `${bookData.book.toLowerCase()}-${index}`,
-          book: bookData.book,
-          question: q.question,
-          options: q.options,
-          correct: q.correct,
-          reference: q.reference,
-          difficulty: q.difficulty as Difficulty
+      if (bookData && bookData.questions && Array.isArray(bookData.questions)) {
+        bookData.questions.forEach((q, index) => {
+          allQuestions.push({
+            id: `${bookData.book.toLowerCase()}-${index}`,
+            book: bookData.book,
+            question: q.question,
+            options: q.options,
+            correct: q.correct,
+            reference: q.reference,
+            difficulty: q.difficulty as Difficulty
+          });
         });
-      });
+      }
     });
 
     if (allQuestions.length > 0) {
