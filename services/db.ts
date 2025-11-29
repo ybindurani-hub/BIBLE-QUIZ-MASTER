@@ -93,40 +93,50 @@ export const getProgress = async (bookName: string): Promise<UserProgress[]> => 
 
 // Seed initial data from static JSON
 export const seedInitialData = async () => {
-  // Check if we already have data for Genesis (assuming if Genesis is there, we seeded)
-  const genesisQs = await getQuestionsByBook('Genesis');
-  
-  if (genesisQs.length === 0) {
-    console.log("Seeding Database from Static JSON...");
+  try {
+    // Check if we already have data for Genesis (assuming if Genesis is there, we seeded)
+    const genesisQs = await getQuestionsByBook('Genesis');
     
-    if (!STATIC_BIBLE_DATA || !Array.isArray(STATIC_BIBLE_DATA)) {
-      console.error("Static data is missing or invalid");
-      return;
-    }
-
-    const allQuestions: Question[] = [];
-
-    STATIC_BIBLE_DATA.forEach((bookData) => {
-      if (bookData && bookData.questions && Array.isArray(bookData.questions)) {
-        bookData.questions.forEach((q, index) => {
-          allQuestions.push({
-            id: `${bookData.book.toLowerCase()}-${index}`,
-            book: bookData.book,
-            question: q.question,
-            options: q.options,
-            correct: q.correct,
-            reference: q.reference,
-            difficulty: q.difficulty as Difficulty
-          });
-        });
+    if (genesisQs.length === 0) {
+      console.log("Seeding Database from Static JSON...");
+      
+      // CRITICAL FIX: Robust check for data existence
+      if (!STATIC_BIBLE_DATA || !Array.isArray(STATIC_BIBLE_DATA)) {
+        console.error("Static data is missing, undefined, or not an array. Skipping seed.");
+        return;
       }
-    });
 
-    if (allQuestions.length > 0) {
-      await saveQuestions(allQuestions);
-      console.log(`Seeded ${allQuestions.length} questions successfully.`);
+      const allQuestions: Question[] = [];
+
+      STATIC_BIBLE_DATA.forEach((bookData) => {
+        // Safe check for each book entry
+        if (bookData && bookData.book && Array.isArray(bookData.questions)) {
+          bookData.questions.forEach((q, index) => {
+            if (q && q.question && q.options && q.correct) {
+               allQuestions.push({
+                id: `${bookData.book.toLowerCase()}-${index}`,
+                book: bookData.book,
+                question: q.question,
+                options: q.options,
+                correct: q.correct,
+                reference: q.reference || "",
+                difficulty: (q.difficulty as Difficulty) || "Moderate"
+              });
+            }
+          });
+        }
+      });
+
+      if (allQuestions.length > 0) {
+        await saveQuestions(allQuestions);
+        console.log(`Seeded ${allQuestions.length} questions successfully.`);
+      } else {
+        console.warn("No valid questions found to seed.");
+      }
+    } else {
+      console.log("Database already seeded.");
     }
-  } else {
-    console.log("Database already seeded.");
+  } catch (error) {
+    console.error("Error during data seeding:", error);
   }
 };
