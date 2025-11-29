@@ -2,7 +2,8 @@ import { Question, UserProgress, Difficulty } from '../types';
 import { STATIC_BIBLE_DATA } from '../data/questions';
 
 const DB_NAME = 'BibleQuizDB';
-const DB_VERSION = 3; // Bumped to 3 to force re-seeding of the new 66-book data
+// Bumped to 6 to force a complete wipe and re-seed of the manual data
+const DB_VERSION = 6; 
 const STORE_QUESTIONS = 'questions';
 const STORE_PROGRESS = 'progress';
 
@@ -20,8 +21,8 @@ export const initDB = (): Promise<IDBDatabase> => {
       const db = (event.target as IDBOpenDBRequest).result;
       
       // 1. Questions Store
+      // Explicitly delete the old store if it exists to ensure no stale data conflicts
       if (db.objectStoreNames.contains(STORE_QUESTIONS)) {
-        // If updating version, clear old store to ensure fresh data
         db.deleteObjectStore(STORE_QUESTIONS);
       }
       const qStore = db.createObjectStore(STORE_QUESTIONS, { keyPath: 'id' });
@@ -29,6 +30,8 @@ export const initDB = (): Promise<IDBDatabase> => {
 
       // 2. Progress Store
       if (!db.objectStoreNames.contains(STORE_PROGRESS)) {
+        // We preserve progress if possible, but can recreate if schema changed
+        // For now, we keep progress across updates if structure is same
         const pStore = db.createObjectStore(STORE_PROGRESS, { keyPath: ['bookName', 'difficulty'] });
       }
     };
@@ -134,7 +137,7 @@ export const seedInitialData = async () => {
     const countRequest = store.count();
     
     countRequest.onsuccess = async () => {
-        // If DB is empty (which it will be after version bump), seed data
+        // If DB is empty (which it will be after version bump wipes it), seed data
         if (countRequest.result === 0) {
             console.log("Seeding Database from Static JSON...");
       
@@ -171,7 +174,7 @@ export const seedInitialData = async () => {
                 console.warn("No valid questions found to seed.");
             }
         } else {
-            console.log("Database already seeded (v3).");
+            console.log("Database already seeded (v6).");
         }
     };
   } catch (error) {
